@@ -1,0 +1,29 @@
+package com.churnprediction.controller;
+
+import com.churnprediction.dto.AnalyticsSummary;
+import com.churnprediction.service.ChurnModelService;
+import com.churnprediction.service.CustomerService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/analytics")
+public class AnalyticsController {
+
+    private final CustomerService customerService;
+    private final ChurnModelService churnModelService;
+
+    public AnalyticsController(CustomerService customerService, ChurnModelService churnModelService) {
+        this.customerService = customerService;
+        this.churnModelService = churnModelService;
+    }
+
+    @GetMapping("/summary")
+    public AnalyticsSummary summary() {
+        return customerService.getAnalyticsSummary(
+                churnModelService.getLastAccuracy(),
+                churnModelService.getLastRocAuc()
+        );
+    }
+}

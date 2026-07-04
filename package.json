@@ -1,0 +1,83 @@
+# Churn Prediction Backend
+
+Spring Boot + Weka (Random Forest) service for real-time customer churn prediction.
+
+## Stack
+- Java 17, Spring Boot 3.2
+- Weka 3.8.6 (`weka-stable`) — Random Forest classifier
+- MySQL 8 (Spring Data JPA / Hibernate)
+- Maven
+
+## 1. Prerequisites
+- JDK 17+
+- Maven 3.8+
+- MySQL 8 running locally (or update `application.properties`)
+
+## 2. Database setup
+```sql
+CREATE DATABASE churn_db;
+```
+The app will auto-create/update the `customers` table on startup (`ddl-auto=update`).
+Edit `src/main/resources/application.properties` if your MySQL user/password differ from `root`/`root`.
+
+## 3. Run it
+```bash
+mvn spring-boot:run
+```
+
+On first startup with an empty `customers` table, the app will:
+1. Generate ~800 synthetic, behaviorally-correlated customer records (see `SyntheticDataGenerator`)
+2. Save them to MySQL
+3. Train a Random Forest model (150 trees, 10-fold cross-validated)
+4. Persist the trained model to `churn-rf-model.model` in the project root
+
+Subsequent restarts reuse the saved model and existing data.
+
+## 4. API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/customers?riskLevel=High&segment=Standard&page=0&size=25` | Paginated, filterable customer list |
+| GET | `/api/customers/{customerCode}` | Single customer |
+| POST | `/api/customers` | Create a customer record |
+| POST | `/api/predict` | Run churn prediction on submitted data |
+| POST | `/api/model/train` | Retrain on all labeled records in MySQL |
+| GET | `/api/model/status` | Model readiness + last evaluation metrics |
+| GET | `/api/analytics/summary` | Aggregates for the dashboard (risk distribution, segments, model metrics) |
+
+### Example: predict
+```bash
+curl -X POST http://localhost:8080/api/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customerCode": "CUST-000123",
+    "tenureMonths": 4,
+    "monthlyCharges": 89.50,
+    "contractType": "Month-to-month",
+    "paymentMethod": "Electronic check",
+    "internetService": "Fiber optic",
+    "techSupport": "No",
+    "numSupportCalls": 3,
+    "avgMonthlyUsageGb": 62,
+    "paperlessBilling": "Yes",
+    "multipleLines": "No"
+  }'
+```
+Response:
+```json
+{
+  "customerCode": "CUST-000123",
+  "churnProbability": 0.7231,
+  "riskLevel": "High",
+  "recommendedAction": "Escalate to retention team within 48 hours; consider loyalty offer."
+}
+```
+
+## 5. Feature engineering
+`FeatureEngineeringService` is the single source of truth for the feature schema, shared by
+training and inference so they never drift apart. It cleans nulls, derives `avgRevenuePerMonth`
+and `supportCallRate`, and encodes categorical fields as Weka nominal attributes.
+
+## 6. Retraining with real data
+Replace the synthetic seeding step by loading your own historical, labeled records via
+`POST /api/customers` (include `"churned": "Yes"` or `"No"`), then call `POST /api/model/train`.
